@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: VPC with EC2 instance
+
+Parameters:
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+  SubnetCIDR:
+    Description: Classless Inter-Domain Routing
+    Type: String
+    Default: 10.0.0.0/28
+
+Mappings:
+  AMI:
+    ap-northeast-1:
+      Ubuntu2004LTS: ami-02a56e430b32bc0ba
+    ap-northeast-2:
+      Ubuntu2004LTS: ami-0cceb8e71553d73f0
+    ap-northeast-3:
+      Ubuntu2004LTS: ami-0c2a318a1451b5e04
+    ap-south-1:
+      Ubuntu2004LTS: ami-01ad2fc4607cc742e
+    ap-southeast-1:
+      Ubuntu2004LTS: ami-072466d111bc68d81
+    ap-southeast-2:
+      Ubuntu2004LTS: ami-0606a3915440b2b72
+    ca-central-1:
+      Ubuntu2004LTS: ami-07e39d7bd85085b96
+    eu-central-1:
+      Ubuntu2004LTS: ami-0afc0414aefc9eaa7
+    eu-north-1:
+      Ubuntu2004LTS: ami-0aacae1c06b3c30a0
+    eu-west-1:
+      Ubuntu2004LTS: ami-0c1aea1d6f3bdd76b
+    eu-west-2:
+      Ubuntu2004LTS: ami-00f314baca4922fe3
+    eu-west-3:
+      Ubuntu2004LTS: ami-021a18be6333356c7
+    sa-east-1:
+      Ubuntu2004LTS: ami-0a62c6929da4659cb
+    us-east-1:
+      Ubuntu2004LTS: ami-089b5711e63812c2a
+    us-east-2:
+      Ubuntu2004LTS: ami-0ac4906b9504bec77
+    us-west-1:
+      Ubuntu2004LTS: ami-04b8a53b12fd66ba7
+    us-west-2:
+      Ubuntu2004LTS: ami-0f6970790b38613ef
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref SubnetCIDR
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+  EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref Subnet
+      AllocationId: !GetAtt EIP.AllocationId
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+  Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [ AMI, !Ref AWS::Region, Ubuntu2004LTS ]
+      SubnetId: !Ref Subnet
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+
+Outputs:
+  InstanceId:
+    Description: InstanceId of the newly created EC2 instance
+    Value: !Ref Instance
