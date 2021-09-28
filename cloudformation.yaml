@@ -7,12 +7,31 @@ Parameters:
     Description: EC2 instance type
     Type: String
     Default: t2.micro
-  SubnetCIDR:
-    Description: Classless Inter-Domain Routing
+  ProxyPort:
+    Description: Proxy port
+    Type: Number
+  ProxyStatsUsername:
+    Description: Username to log in proxy stats
     Type: String
-    Default: 10.0.0.0/28
+  ProxyStatsPassword:
+    Description: Password to log in proxy stats
+    Type: String
+  ProxyStatsPort:
+    Description: Proxy Stats port
+    Type: Number
+  ServerDomain:
+    Description: Server domain
+    Type: String
+  ServerPort:
+    Description: Server port
+    Type: Number
 
 Mappings:
+  SubnetConfig:
+    CIDRs:
+      VPC: 10.0.0.0/27
+      Public: 10.0.0.0/28
+      Private: 10.0.0.16/28
   AMI:
     ap-northeast-1:
       Ubuntu2004LTS: ami-02a56e430b32bc0ba
@@ -53,29 +72,66 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !Ref SubnetCIDR
+      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, VPC ]
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-InternetGateway
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
-  Subnet:
+  PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !Ref SubnetCIDR
+      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, Public ]
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicRouteTable
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, Private ]
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet
   EIP:
     Type: AWS::EC2::EIP
     DependsOn: VPCGatewayAttachment
@@ -84,35 +140,126 @@ Resources:
   NatGateway:
     Type: AWS::EC2::NatGateway
     Properties:
-      SubnetId: !Ref Subnet
+      SubnetId: !Ref PublicSubnet
       AllocationId: !GetAtt EIP.AllocationId
-  RouteTable:
+  PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
-  Route:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateRouteTable
+  PrivateRoute:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref RouteTable
+      RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway
-  SubnetRouteTableAssociation:
+  PrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref Subnet
-      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${AWS::StackName}-InstanceProfile
+      Roles:
+        - !Ref InstanceRole
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PrivateSubnet
       ImageId: !FindInMap [ AMI, !Ref AWS::Region, Ubuntu2004LTS ]
-      SubnetId: !Ref Subnet
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          apt-get --yes update
+          apt-get --yes upgrade
+          wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+          mkdir -p /opt/aws/bin
+          python3 -m easy_install --script-dir /opt/aws/bin aws-cfn-bootstrap-py3-latest.tar.gz
+          /opt/aws/bin/cfn-init --verbose --region ${AWS::Region} --stack ${AWS::StackName} --resource Instance
+          /opt/aws/bin/cfn-signal --exit-code $? --region ${AWS::Region} --stack ${AWS::StackName} --resource Instance
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            01_enable_cfn_hup:
+              command: systemctl enable cfn-hup.service
+            02_start_cfn_hup:
+              command: systemctl start cfn-hup.service
+            03_install_haproxy:
+              command: apt-get --yes --force-yes -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install haproxy
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+              mode: '000400'
+              owner: root
+              group: root
+            /lib/systemd/system/cfn-hup.service:
+              content: !Sub |
+                [Unit]
+                Description=cfn-hup daemon
+                [Service]
+                Type=simple
+                ExecStart=/opt/aws/bin/cfn-hup
+                Restart=always
+                [Install]
+                WantedBy=multi-user.target
+            /etc/haproxy/haproxy.cfg:
+              content: !Sub |
+                global
+                  log stdout format raw local0 info
+                defaults
+                  mode tcp
+                  timeout client 10s
+                  timeout connect 5s
+                  timeout server 10s
+                  log global
+                frontend stats
+                  mode http
+                  bind *:${ProxyStatsPort}
+                  stats auth ${ProxyStatsUsername}:${ProxyStatsPassword}
+                  stats enable
+                  stats uri /
+                  stats refresh 10s
+                frontend my_frontend
+                  bind :${ProxyPort}
+                  default_backend my_backend
+                backend my_backend
+                  server my_server ${ServerDomain}:${ServerPort} check
 
 Outputs:
   InstanceId:
