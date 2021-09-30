@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: VPC with EC2 instance
+Description: Global accelerator to TCP proxy in any region
 
 Parameters:
   InstanceType:
@@ -440,6 +440,18 @@ Resources:
       HealthCheckPort: !Ref ProxyPort
 
 Outputs:
-  InstanceId:
+  Proxy:
+    Description: Domain:Port to proxy
+    Value: !Sub ${GlobalAccelerator.DnsName}:${ProxyPort}
+  ProxyStats:
+    Description: Domain:Port to proxy stats
+    Value: !Sub ${GlobalAccelerator.DnsName}:${ProxyStatsPort}
+  ProxyStatsUsername:
+    Description: Username to log in proxy stats
+    Value: !Ref ProxyStatsUsername
+  ProxyStatsPassword:
+    Description: Password to log in proxy stats
+    Value: !Ref ProxyStatsPassword
+  ProxyInstanceId:
     Description: InstanceId of the newly created EC2 instance
     Value: !Ref Instance
