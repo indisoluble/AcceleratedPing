@@ -7,6 +7,9 @@ Parameters:
     Description: EC2 instance type
     Type: String
     Default: t2.micro
+  ClientIP:
+    Description: Client IP
+    Type: String
   ProxyPort:
     Description: Proxy port
     Type: Number
@@ -182,13 +185,160 @@ Resources:
       InstanceProfileName: !Sub ${AWS::StackName}-InstanceProfile
       Roles:
         - !Ref InstanceRole
+  Route53HealthCheckersSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-Route53HealthCheckersSecurityGroup
+      GroupDescription: Route53 health checker IPs
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - Description: GLOBAL
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 15.177.0.0/18
+        - Description: cn-north-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.80.197.0/25
+        - Description: cn-north-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.80.197.128/25
+        - Description: cn-north-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.80.198.0/25
+        - Description: cn-northwest-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.83.34.128/25
+        - Description: cn-northwest-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.83.35.0/25
+        - Description: cn-northwest-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 52.83.35.128/25
+        - Description: ap-northeast-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.248.220.0/26
+        - Description: ap-northeast-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.250.253.192/26
+        - Description: ap-southeast-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.251.31.128/26
+        - Description: ap-southeast-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.255.254.192/26
+        - Description: ap-southeast-2
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.252.254.192/26
+        - Description: ap-southeast-2
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.252.79.128/26
+        - Description: eu-west-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 176.34.159.192/26
+        - Description: eu-west-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.228.16.0/26
+        - Description: sa-east-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 177.71.207.128/26
+        - Description: sa-east-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.232.40.64/26
+        - Description: us-east-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 107.23.255.0/26
+        - Description: us-east-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.243.31.192/26
+        - Description: us-west-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.183.255.128/26
+        - Description: us-west-1
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.241.32.64/26
+        - Description: us-west-2
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.244.52.192/26
+        - Description: us-west-2
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: 54.245.168.0/26
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Route53HealthCheckersSecurityGroup
+  ClientSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-ClientSecurityGroup
+      GroupDescription: Client IP
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - Description: Proxy
+          IpProtocol: tcp
+          FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+          CidrIp: !Sub ${ClientIP}/32
+        - Description: Stats
+          IpProtocol: tcp
+          FromPort: !Ref ProxyStatsPort
+          ToPort: !Ref ProxyStatsPort
+          CidrIp: !Sub ${ClientIP}/32
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      SubnetId: !Ref PrivateSubnet
       ImageId: !FindInMap [ AMI, !Ref AWS::Region, Ubuntu2004LTS ]
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref PrivateSubnet
+      SecurityGroupIds:
+        - !GetAtt ClientSecurityGroup.GroupId
+        - !GetAtt Route53HealthCheckersSecurityGroup.GroupId
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
@@ -260,6 +410,34 @@ Resources:
                   default_backend my_backend
                 backend my_backend
                   server my_server ${ServerDomain}:${ServerPort} check
+  GlobalAccelerator:
+    Type: AWS::GlobalAccelerator::Accelerator
+    Properties:
+      Name: !Sub ${AWS::StackName}-GlobalAccelerator
+      Tags:
+        - Key: Application
+          Value: !Ref AWS::StackName
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-GlobalAccelerator
+  GlobalAcceleratorListener:
+    Type: AWS::GlobalAccelerator::Listener
+    Properties:
+      AcceleratorArn: !Ref GlobalAccelerator
+      Protocol: TCP
+      PortRanges:
+        - FromPort: !Ref ProxyPort
+          ToPort: !Ref ProxyPort
+        - FromPort: !Ref ProxyStatsPort
+          ToPort: !Ref ProxyStatsPort
+  GlobalAcceleratorEndpoint:
+    Type: AWS::GlobalAccelerator::EndpointGroup
+    Properties:
+      ListenerArn: !Ref GlobalAcceleratorListener
+      EndpointGroupRegion: !Ref AWS::Region
+      EndpointConfigurations:
+        - EndpointId: !Ref Instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: !Ref ProxyPort
 
 Outputs:
   InstanceId:
