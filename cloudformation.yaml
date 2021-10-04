@@ -7,6 +7,10 @@ Parameters:
     Description: EC2 instance type
     Type: String
     Default: t2.micro
+  CIDR:
+    Description: Subnet IP range
+    Type: String
+    Default: 10.0.0.0/28
   ClientIP:
     Description: Client IP
     Type: String
@@ -30,11 +34,6 @@ Parameters:
     Type: Number
 
 Mappings:
-  SubnetConfig:
-    CIDRs:
-      VPC: 10.0.0.0/27
-      Public: 10.0.0.0/28
-      Private: 10.0.0.16/28
   AMI:
     ap-northeast-1:
       Ubuntu2004LTS: ami-02a56e430b32bc0ba
@@ -75,7 +74,7 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, VPC ]
+      CidrBlock: !Ref CIDR
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
@@ -98,7 +97,8 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, Public ]
+      CidrBlock: !Ref CIDR
+      MapPublicIpOnLaunch: true
       Tags:
         - Key: Application
           Value: !Ref AWS::StackName
@@ -125,46 +125,6 @@ Resources:
     Properties:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
-  PrivateSubnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: !FindInMap [ SubnetConfig, CIDRs, Private ]
-      Tags:
-        - Key: Application
-          Value: !Ref AWS::StackName
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-PrivateSubnet
-  EIP:
-    Type: AWS::EC2::EIP
-    DependsOn: VPCGatewayAttachment
-    Properties:
-      Domain: vpc
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      SubnetId: !Ref PublicSubnet
-      AllocationId: !GetAtt EIP.AllocationId
-  PrivateRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Application
-          Value: !Ref AWS::StackName
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-PrivateRouteTable
-  PrivateRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
-  PrivateSubnetRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnet
-      RouteTableId: !Ref PrivateRouteTable
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -335,7 +295,7 @@ Resources:
       ImageId: !FindInMap [ AMI, !Ref AWS::Region, Ubuntu2004LTS ]
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref InstanceProfile
-      SubnetId: !Ref PrivateSubnet
+      SubnetId: !Ref PublicSubnet
       SecurityGroupIds:
         - !GetAtt ClientSecurityGroup.GroupId
         - !GetAtt Route53HealthCheckersSecurityGroup.GroupId
