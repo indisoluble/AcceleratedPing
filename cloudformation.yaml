@@ -3,10 +3,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Global accelerator to TCP proxy in any region
 
 Parameters:
-  InstanceType:
-    Description: EC2 instance type
-    Type: String
-    Default: t2.micro
   CIDR:
     Description: Subnet IP range
     Type: String
@@ -14,18 +10,24 @@ Parameters:
   ClientIP:
     Description: Client IP
     Type: String
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
   ProxyPort:
     Description: Proxy port
     Type: Number
-  ProxyStatsUsername:
-    Description: Username to log in proxy stats
-    Type: String
   ProxyStatsPassword:
     Description: Password to log in proxy stats
     Type: String
   ProxyStatsPort:
     Description: Proxy Stats port
     Type: Number
+    Default: 8404
+  ProxyStatsUsername:
+    Description: Username to log in proxy stats
+    Type: String
+    Default: admin
   ServerDomain:
     Description: Server domain
     Type: String
